@@ -34,7 +34,45 @@
         }
     </style>
 </head>
+
 <body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col md:flex-row">
+    <!-- Authentication gate: the application stays hidden until an active admin signs in -->
+    <div id="authGate" class="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div class="text-center">
+          <div class="mx-auto mb-3 w-14 h-14 rounded-2xl bg-blue-950 text-yellow-400 flex items-center justify-center text-2xl"><i class="fa-solid fa-shield-halved"></i></div>
+          <h2 class="text-xl font-extrabold text-blue-950">تسجيل الدخول للنظام</h2>
+          <p class="text-sm text-slate-500 mt-1">أمانة مصر القديمة والمنيل</p>
+        </div>
+        <div id="setupNotice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 text-sm">
+          يلزم إعداد رابط مشروع Supabase والمفتاح العام من قسم الإعدادات قبل تسجيل الدخول.
+        </div>
+        <form id="loginForm" class="space-y-3">
+          <label class="block text-sm font-bold">البريد الإلكتروني
+            <input id="loginEmail" type="email" required autocomplete="username" class="mt-1 w-full border border-slate-300 rounded-xl p-3" placeholder="admin@example.com">
+          </label>
+          <label class="block text-sm font-bold">كلمة المرور
+            <input id="loginPassword" type="password" required autocomplete="current-password" class="mt-1 w-full border border-slate-300 rounded-xl p-3" placeholder="كلمة المرور">
+          </label>
+          <button id="loginButton" type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white rounded-xl p-3 font-bold">دخول آمن</button>
+        </form>
+        <details class="border-t pt-3">
+          <summary class="cursor-pointer text-sm font-bold text-slate-700">إعداد اتصال Supabase</summary>
+          <div class="space-y-3 mt-3">
+            <label class="block text-xs font-bold">Project URL
+              <input id="configProjectUrl" type="url" class="mt-1 w-full border rounded-lg p-2 font-mono" placeholder="https://PROJECT_REF.supabase.co">
+            </label>
+            <label class="block text-xs font-bold">Publishable key أو anon key
+              <input id="configAnonKey" type="password" class="mt-1 w-full border rounded-lg p-2 font-mono" placeholder="sb_publishable_... أو eyJ...">
+            </label>
+            <button type="button" onclick="saveSupabaseConfig()" class="w-full bg-emerald-700 text-white rounded-lg p-2 font-bold">حفظ إعداد الاتصال</button>
+            <p class="text-[11px] text-red-700">لا تستخدم service_role أو secret key في المتصفح.</p>
+          </div>
+        </details>
+        <p id="authMessage" role="status" class="text-sm text-center text-red-700"></p>
+      </div>
+    </div>
+
 
     <!-- SIDEBAR NAVIGATION -->
     <aside class="w-full md:w-64 bg-slate-900 text-white flex flex-col shadow-xl z-30 shrink-0">
@@ -93,8 +131,9 @@
             </div>
             <div class="flex items-center gap-3">
                 <span class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200">
-                    <i class="fa-solid fa-microchip text-yellow-600 ml-1.5"></i> وضع الإدخال والمراجعة
+                    <i class="fa-solid fa-shield-halved text-yellow-600 ml-1.5"></i> <span id="sessionBadge">يتطلب تسجيل الدخول</span>
                 </span>
+                <button onclick="logoutFromSystem()" class="bg-red-700 hover:bg-red-800 text-white px-3 py-2 rounded-lg text-xs font-bold"><i class="fa-solid fa-right-from-bracket ml-1"></i> خروج</button>
             </div>
         </header>
 
@@ -330,6 +369,9 @@
                 <h3 class="text-lg font-bold text-blue-950 mb-2">إعدادات قراءة البطاقة</h3>
                 <p class="text-xs text-red-700 mb-4">لا تضع مفتاح API سريًا داخل ملف HTML أو المتصفح؛ يمكن لأي مستخدم استخراجه. لتفعيل قراءة الصور بالذكاء الاصطناعي، اربط النظام بخادم وسيط آمن يحمي المفتاح ويطلب الموافقة قبل إرسال الصور.</p>
                 <div class="space-y-4">
+                    <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                      إعداد اتصال Supabase يتم من شاشة تسجيل الدخول. يتم التحقق من حساب المدير عبر جدول profiles، وتُحمّل بيانات الأعضاء من جدول members.
+                    </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1">حالة الربط</label>
                         <input type="password" id="geminiApiKeyInput" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono focus:outline-blue-900" placeholder="قراءة OCR محلية في المتصفح">
@@ -376,9 +418,23 @@
         <span id="toastMsg">تم الإجراء بنجاح</span>
     </div>
 
+    <!-- Supabase client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- JAVASCRIPT LOGIC -->
     <script>
         let membersData = JSON.parse(localStorage.getItem('nation_party_members')) || [];
+        let supabaseClient = null;
+        let currentAuthUser = null;
+        let currentProfile = null;
+        let databaseColumns = [];
+        let orgUnitsCache = [];
+        let orgPositionsCache = [];
+        let dataMode = 'local';
+        const SUPABASE_CONFIG_KEY = 'nation_party_supabase_config';
+        const savedSupabaseConfig = JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || 'null');
+        if (savedSupabaseConfig?.url && savedSupabaseConfig?.key && window.supabase?.createClient) {
+            try { supabaseClient = window.supabase.createClient(savedSupabaseConfig.url, savedSupabaseConfig.key); } catch (e) { console.error(e); }
+        }
 
         const shayakhatList = [
             '1. أثر النبي', '2. المنيل', '3. الروضة', '4. كوم غراب', 
@@ -388,10 +444,191 @@
         let videoStream = null;
         let geminiApiKey = '';
 
-        window.onload = function() {
+        window.onload = async function() {
+            const cfg = JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || 'null');
+            if (cfg) {
+                document.getElementById('configProjectUrl').value = cfg.url || '';
+                document.getElementById('configAnonKey').value = cfg.key || '';
+            }
             renderMembersList();
             renderShayakhatCards();
+            if (!supabaseClient) {
+                document.getElementById('setupNotice').classList.remove('hidden');
+                return;
+            }
+            try {
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                if (error) throw error;
+                if (session?.user) await establishAuthenticatedSession(session.user);
+            } catch (err) {
+                showAuthMessage('تعذر استعادة جلسة الدخول: ' + safeError(err));
+            }
         };
+
+        function safeError(err) {
+            return String(err?.message || err || 'خطأ غير معروف').slice(0, 240);
+        }
+        function showAuthMessage(message, success=false) {
+            const el = document.getElementById('authMessage');
+            el.textContent = message || '';
+            el.className = 'text-sm text-center ' + (success ? 'text-emerald-700' : 'text-red-700');
+        }
+        function saveSupabaseConfig() {
+            const url = document.getElementById('configProjectUrl').value.trim().replace(/\/+$/, '');
+            const key = document.getElementById('configAnonKey').value.trim();
+            if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
+                showAuthMessage('رابط المشروع غير صحيح. استخدم رابط مشروع Supabase الرسمي.');
+                return;
+            }
+            if (!key || /service_role|secret/i.test(key)) {
+                showAuthMessage('أدخل المفتاح العام Publishable أو anon فقط، ولا تستخدم مفتاحًا سريًا.');
+                return;
+            }
+            localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({url, key}));
+            location.reload();
+        }
+        async function loginToSystem(event) {
+            event.preventDefault();
+            if (!supabaseClient) {
+                showAuthMessage('احفظ إعدادات Supabase أولًا ثم أعد تحميل الصفحة.');
+                return;
+            }
+            const button = document.getElementById('loginButton');
+            button.disabled = true;
+            button.textContent = 'جارٍ التحقق...';
+            showAuthMessage('');
+            try {
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
+                    email: document.getElementById('loginEmail').value.trim(),
+                    password: document.getElementById('loginPassword').value
+                });
+                if (error) throw error;
+                await establishAuthenticatedSession(data.user);
+            } catch (err) {
+                showAuthMessage('فشل تسجيل الدخول: ' + safeError(err));
+            } finally {
+                button.disabled = false;
+                button.textContent = 'دخول آمن';
+            }
+        }
+        document.getElementById('loginForm').addEventListener('submit', loginToSystem);
+
+        async function establishAuthenticatedSession(user) {
+            if (!supabaseClient || !user) return;
+            const { data: profile, error } = await supabaseClient
+                .from('profiles').select('id, username, full_name, role, is_active')
+                .eq('id', user.id).maybeSingle();
+            if (error) throw new Error('تعذر التحقق من صلاحية الحساب من profiles: ' + error.message);
+            if (!profile || profile.is_active !== true || profile.role !== 'admin') {
+                await supabaseClient.auth.signOut();
+                throw new Error('الحساب غير نشط أو لا يملك صلاحية مدير النظام.');
+            }
+            currentAuthUser = user;
+            currentProfile = profile;
+            dataMode = 'supabase';
+            await loadMembersFromSupabase();
+            document.getElementById('authGate').classList.add('hidden');
+            document.getElementById('sessionBadge').textContent = 'مدير النظام: ' + (profile.full_name || profile.username || 'Admin');
+            showToast('مرحبًا ' + (profile.full_name || profile.username || 'مدير النظام'), 'success');
+        }
+        async function logoutFromSystem() {
+            if (supabaseClient) await supabaseClient.auth.signOut();
+            currentAuthUser = null;
+            currentProfile = null;
+            dataMode = 'local';
+            document.getElementById('authGate').classList.remove('hidden');
+            showAuthMessage('تم تسجيل الخروج.', true);
+        }
+
+        function firstExistingKey(row, candidates) {
+            return candidates.find(k => Object.prototype.hasOwnProperty.call(row, k)) || null;
+        }
+        function valueByCandidates(row, candidates, fallback='') {
+            const key = firstExistingKey(row || {}, candidates);
+            return key ? (row[key] ?? fallback) : fallback;
+        }
+        function normalizeDbMember(row) {
+            const unitValue = valueByCandidates(row, ['shayakha','org_unit_name','organizational_unit','unit_name','organizational_unit_raw'], '');
+            const unitId = valueByCandidates(row, ['org_unit_id','organizational_unit_id','unit_id'], '');
+            const unit = orgUnitsCache.find(u => String(u.id) === String(unitId));
+            return {
+                id: String(valueByCandidates(row, ['id','member_id'], '')),
+                fullname: String(valueByCandidates(row, ['fullname','full_name','name','member_name'], '')),
+                nationalId: String(valueByCandidates(row, ['nationalId','national_id','nationalid','national_id_number'], '')),
+                memberCode: String(valueByCandidates(row, ['memberCode','membership_number','member_code','membership_code'], '')),
+                phone: String(valueByCandidates(row, ['phone','phone_number','mobile','mobile_number','whatsapp'], '')),
+                shayakha: String(unitValue || unit?.name || ''),
+                committee: String(valueByCandidates(row, ['committee','position_name','position','job_title'], '')),
+                addressDetails: String(valueByCandidates(row, ['addressDetails','address','full_address','address_details'], '')),
+                dob: String(valueByCandidates(row, ['dob','date_of_birth','birth_date'], '')),
+                gov: String(valueByCandidates(row, ['gov','governorate'], 'القاهرة')),
+                gender: String(valueByCandidates(row, ['gender','sex'], '')),
+                _raw: row
+            };
+        }
+        async function loadMembersFromSupabase() {
+            if (!supabaseClient || !currentAuthUser) return;
+            const { data: units, error: unitsError } = await supabaseClient.from('org_units').select('*').limit(200);
+            if (!unitsError && Array.isArray(units)) orgUnitsCache = units;
+            const { data: positions, error: positionsError } = await supabaseClient.from('org_unit_positions').select('*').limit(1000);
+            if (!positionsError && Array.isArray(positions)) orgPositionsCache = positions;
+            const { data, error } = await supabaseClient.from('members').select('*').limit(2000);
+            if (error) throw new Error('تعذر تحميل الأعضاء من Supabase: ' + error.message);
+            databaseColumns = data?.length ? Object.keys(data[0]) : [];
+            membersData = (data || []).map(normalizeDbMember);
+            renderMembersList();
+            renderShayakhatCards();
+        }
+        function buildDbMemberPayload(member, existingRow=null) {
+            const sample = existingRow || (membersData.find(m => m._raw)?._raw) || {};
+            const payload = {};
+            const put = (candidates, value) => {
+                const key = firstExistingKey(sample, candidates);
+                if (key && key !== 'id' && key !== 'created_at' && key !== 'updated_at') payload[key] = value;
+            };
+            put(['fullname','full_name','name','member_name'], member.fullname);
+            put(['nationalId','national_id','nationalid','national_id_number'], member.nationalId);
+            put(['memberCode','membership_number','member_code','membership_code'], member.memberCode);
+            put(['phone','phone_number','mobile','mobile_number','whatsapp'], member.phone);
+            put(['shayakha','org_unit_name','organizational_unit','unit_name','organizational_unit_raw'], member.shayakha);
+            put(['committee','position_name','position','job_title'], member.committee);
+            put(['addressDetails','address','full_address','address_details'], member.addressDetails);
+            put(['dob','date_of_birth','birth_date'], member.dob);
+            put(['gov','governorate'], member.gov);
+            put(['gender','sex'], member.gender);
+            const unitIdKey = firstExistingKey(sample, ['org_unit_id','organizational_unit_id','unit_id']);
+            if (unitIdKey && !Object.keys(payload).some(k => ['shayakha','org_unit_name','organizational_unit','unit_name','organizational_unit_raw'].includes(k))) {
+                const unit = orgUnitsCache.find(u => String(valueByCandidates(u, ['name','unit_name','title'], '')) === member.shayakha);
+                if (unit) payload[unitIdKey] = unit.id;
+                else throw new Error('لم أجد الشياخة في جدول org_units؛ لم يتم حفظ العضو لتجنب ربطه بوحدة خاطئة.');
+            }
+            const positionIdKey = firstExistingKey(sample, ['position_id','org_unit_position_id']);
+            if (positionIdKey && !Object.keys(payload).some(k => ['committee','position_name','position','job_title'].includes(k))) {
+                const position = orgPositionsCache.find(p =>
+                    String(valueByCandidates(p, ['name','position_name','title'], '')) === member.committee
+                );
+                if (position) payload[positionIdKey] = position.id;
+                else throw new Error('اللجنة غير مربوطة بمعرّف موجود في org_unit_positions. لم يتم الحفظ حتى لا تُسجّل اللجنة خطأ.');
+            }
+            return payload;
+        }
+        async function persistMemberToSupabase(member, editingId=null) {
+            if (!supabaseClient || !currentAuthUser || currentProfile?.role !== 'admin') throw new Error('يجب تسجيل الدخول بحساب مدير نشط.');
+            const existing = editingId ? membersData.find(m => String(m.id) === String(editingId)) : null;
+            const sample = existing?._raw || membersData.find(m => m._raw)?._raw;
+            if (!sample) throw new Error('لم أتمكن من تحديد بنية جدول members. لا توجد سجلات مرجعية لتحويل الحقول بأمان.');
+            const payload = buildDbMemberPayload(member, sample);
+            const idKey = firstExistingKey(sample, ['id','member_id']);
+            if (editingId) {
+                if (!idKey) throw new Error('لم أتمكن من تحديد عمود معرّف العضو للتعديل.');
+                const { error } = await supabaseClient.from('members').update(payload).eq(idKey, editingId);
+                if (error) throw error;
+            } else {
+                const { error } = await supabaseClient.from('members').insert(payload);
+                if (error) throw error;
+            }
+            await loadMembersFromSupabase();
+        }
 
         function switchTab(tabId) {
             ['addMember', 'membersList', 'elections', 'initiatives', 'certificates', 'settings'].forEach(id => {
@@ -406,12 +643,12 @@
             activeMenu.classList.remove('text-slate-300');
 
             const titles = {
-                'addMember': 'تسجيل عضو جديد بواسطة تحليل جيميناي الذكي',
+                'addMember': 'تسجيل عضو جديد مع قراءة البطاقة',
                 'membersList': 'كشف أعضاء أمانة مصر القديمة والمنيل',
                 'elections': 'الوحدات الحزبية والشياخات الـ 8 المعتمدة',
                 'initiatives': 'المبادرات الخدمية والمجتمعية ("كلنا واحد")',
                 'certificates': 'طباعة الكارنيهات والشهادات الرسمية',
-                'settings': 'إعدادات مفتاح جيميناي'
+                'settings': 'إعدادات قراءة البطاقة'
             };
             document.getElementById('currentSectionTitle').innerText = titles[tabId];
         }
@@ -432,10 +669,7 @@
         }
 
         function saveGeminiApiKey() {
-            const key = document.getElementById('geminiApiKeyInput').value.trim();
-            localStorage.setItem('gemini_api_key', key);
-            geminiApiKey = key;
-            showToast('تم حفظ مفتاح جيميناي بنجاح', 'success');
+            showToast('لا يتم تخزين مفاتيح الذكاء الاصطناعي داخل المتصفح. قراءة OCR المحلية متاحة دون مفتاح.', 'info');
         }
 
         async function openGeminiCameraModal() {
@@ -498,53 +732,40 @@
         async function processScannedImage() {
             const alertBox = document.getElementById('geminiProcessingAlert');
             const successBox = document.getElementById('geminiSuccessAlert');
+            const rawPanel = document.getElementById('ocrTextPanel');
+            const rawText = document.getElementById('ocrRawText');
             alertBox.classList.remove('hidden');
             successBox.classList.add('hidden');
-
-            if (geminiApiKey) {
-                try {
-                    // اتصال فعلي بنموذج جيميناي عبر الـ API إذا وُجد المفتاح
-                    const imgEl = document.getElementById('cardPreviewDisplay');
-                    const base64Data = imgEl.src.split(',')[1];
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{
-                                parts: [
-                                    { text: "Extract the full name, national ID (14 digits), and address from this Egyptian ID card image. Return strictly JSON with keys: fullname, nationalId, address." },
-                                    { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-                                ]
-                            }]
-                        })
-                    });
-                    const result = await response.json();
-                    const textResult = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (textResult) {
-                        alertBox.classList.add('hidden');
-                        successBox.classList.remove('hidden');
-                        showToast('تمت القراءة بنجاح عبر جيميناي الذكي!', 'success');
-                        return;
+            rawPanel.classList.add('hidden');
+            try {
+                const imgEl = document.getElementById('cardPreviewDisplay');
+                if (!imgEl.src) throw new Error('لم يتم تحديد صورة.');
+                if (!window.Tesseract) throw new Error('محرك قراءة النص غير متاح. تحقق من الاتصال بالإنترنت.');
+                const result = await Tesseract.recognize(imgEl.src, 'ara+eng', {
+                    logger: m => {
+                        if (m.status === 'recognizing text' && m.progress) {
+                            document.getElementById('geminiProcessingAlert').querySelector('span').textContent =
+                                'جاري قراءة البطاقة... ' + Math.round(m.progress * 100) + '%';
+                        }
                     }
-                } catch(e) {
-                    console.log("AI API fallback active", e);
-                }
-            }
-
-            // محاكاة استخراج واقعية تفاعلية تتيح للمستخدم إدخال البيانات أو تنظّف الحقول إذا أراد
-            setTimeout(() => {
+                });
+                const textResult = (result.data?.text || '').trim();
+                rawText.value = textResult;
+                rawPanel.classList.remove('hidden');
+                const normalizedDigits = textResult.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+                const digits = normalizedDigits.match(/[23]\d{13}/);
+                if (digits) document.getElementById('nationalId').value = digits[0];
+                const lines = textResult.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+                const addressHint = lines.find(x => /شارع|ش\s|منزل|عمارة|عقار|قسم|مركز|القاهرة|الجيزة/.test(x));
+                if (addressHint && !document.getElementById('addressDetails').value) document.getElementById('addressDetails').value = addressHint;
+                handleNationalIDInput(document.getElementById('nationalId').value);
                 alertBox.classList.add('hidden');
                 successBox.classList.remove('hidden');
-                
-                // ترك الحقول مفتوحة ونظيفة أو وضع بيانات افتراضية قابلة للتعديل الفوري
-                if(!document.getElementById('fullname').value) {
-                    document.getElementById('fullname').value = "حزب مستقبل وطن أمانة مصر القديمة والمنيل";
-                    document.getElementById('nationalId').value = "30001234567890";
-                    document.getElementById('addressDetails').value = "10ش الروضة المنيل";
-                    handleNationalIDInput("30001234567890");
-                }
-                showToast('تم الفحص والتحليل بنجاح', 'success');
-            }, 1000);
+                showToast(digits ? 'تم استخراج الرقم القومي؛ راجع باقي الحقول يدويًا.' : 'تم استخراج النص. أدخل الرقم القومي يدويًا إذا لم يظهر بوضوح.', digits ? 'success' : 'info');
+            } catch (err) {
+                alertBox.classList.add('hidden');
+                showToast('تعذرت قراءة البطاقة: ' + safeError(err), 'error');
+            }
         }
 
         function handleNationalIDInput(idVal) {
@@ -568,24 +789,22 @@
             }
         }
 
-        function saveMember(e) {
+        async function saveMember(e) {
             e.preventDefault();
             const nationalIdValue = document.getElementById('nationalId').value.trim();
-            if (!/^([23])\\d{13}$/.test(nationalIdValue)) {
+            if (!/^[23]\d{13}$/.test(nationalIdValue)) {
                 showToast('الرقم القومي يجب أن يتكون من 14 رقمًا ويبدأ بـ 2 أو 3', 'error');
                 return;
             }
-            const editingIdForValidation = document.getElementById('memberForm').dataset.editingId;
-            if (membersData.some(m => m.nationalId === nationalIdValue && m.id !== editingIdForValidation)) {
+            const editingId = document.getElementById('memberForm').dataset.editingId || null;
+            if (membersData.some(m => m.nationalId === nationalIdValue && String(m.id) !== String(editingId))) {
                 showToast('هذا الرقم القومي مسجل بالفعل', 'error');
                 return;
             }
-            const id = Date.now().toString();
-            
-            const newMember = {
-                id,
+            const member = {
+                id: editingId || Date.now().toString(),
                 fullname: document.getElementById('fullname').value.trim(),
-                nationalId: document.getElementById('nationalId').value.trim(),
+                nationalId: nationalIdValue,
                 memberCode: document.getElementById('memberCode').value.trim() || 'MW-' + Math.floor(1000 + Math.random() * 9000),
                 phone: document.getElementById('phone').value.trim(),
                 shayakha: document.getElementById('shayakha').value,
@@ -596,21 +815,26 @@
                 gender: document.getElementById('infoGender').innerText,
                 createdAt: new Date().toISOString()
             };
-
-            if (editingId) {
-                membersData = membersData.map(m => m.id === editingId ? newMember : m);
-                delete form.dataset.editingId;
-                document.querySelector('#memberForm button[type="submit"]').innerHTML = '<i class="fa-solid fa-floppy-disk ml-1"></i> حفظ بيانات العضو';
-            } else {
-                membersData.unshift(newMember);
+            const submit = document.querySelector('#memberForm button[type="submit"]');
+            submit.disabled = true;
+            try {
+                if (dataMode === 'supabase') {
+                    await persistMemberToSupabase(member, editingId);
+                } else {
+                    if (editingId) membersData = membersData.map(m => String(m.id) === String(editingId) ? {...member, _raw: m._raw} : m);
+                    else membersData.unshift(member);
+                    localStorage.setItem('nation_party_members', JSON.stringify(membersData));
+                    renderMembersList();
+                    renderShayakhatCards();
+                }
+                showToast(editingId ? 'تم تحديث بيانات العضو' : 'تم حفظ بيانات العضو', 'success');
+                resetForm();
+                switchTab('membersList');
+            } catch (err) {
+                showToast('لم يتم الحفظ: ' + safeError(err), 'error');
+            } finally {
+                submit.disabled = false;
             }
-            localStorage.setItem('nation_party_members', JSON.stringify(membersData));
-
-            showToast('تم حفظ بيانات العضو بنجاح!', 'success');
-            resetForm();
-            renderMembersList();
-            renderShayakhatCards();
-            switchTab('membersList');
         }
 
         function escapeHTML(value) {
@@ -688,17 +912,31 @@
             submit.innerHTML = '<i class="fa-solid fa-floppy-disk ml-1"></i> حفظ التعديلات';
         }
 
-        function deleteMember(id) {
+        async function deleteMember(id) {
             if (!confirm('هل تريد حذف بيانات هذا العضو؟ لا يمكن التراجع عن الحذف.')) return;
-            membersData = membersData.filter(m => m.id !== id);
-            localStorage.setItem('nation_party_members', JSON.stringify(membersData));
-            renderMembersList();
-            renderShayakhatCards();
-            showToast('تم حذف العضو من القائمة', 'info');
+            try {
+                if (dataMode === 'supabase') {
+                    const member = membersData.find(m => String(m.id) === String(id));
+                    const raw = member?._raw;
+                    const idKey = firstExistingKey(raw || {}, ['id','member_id']);
+                    if (!idKey) throw new Error('تعذر تحديد معرّف العضو.');
+                    const { error } = await supabaseClient.from('members').delete().eq(idKey, id);
+                    if (error) throw error;
+                    await loadMembersFromSupabase();
+                } else {
+                    membersData = membersData.filter(m => String(m.id) !== String(id));
+                    localStorage.setItem('nation_party_members', JSON.stringify(membersData));
+                    renderMembersList();
+                    renderShayakhatCards();
+                }
+                showToast('تم حذف العضو', 'success');
+            } catch (err) {
+                showToast('لم يتم الحذف: ' + safeError(err), 'error');
+            }
         }
 
         function exportDataJSON() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(membersData, null, 2));
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(membersData.map(({_raw, ...m}) => m), null, 2));
             const downloadAnchor = document.createElement('a');
             downloadAnchor.setAttribute("href", dataStr);
             downloadAnchor.setAttribute("download", `مستقبل_وطن_مصر_القديمة_${new Date().toISOString().slice(0,10)}.json`);
@@ -730,6 +968,10 @@
                 try {
                     const imported = JSON.parse(e.target.result);
                     if (Array.isArray(imported)) {
+                        if (dataMode === 'supabase') {
+                            showToast('استيراد JSON لا يكتب فوق قاعدة Supabase تلقائيًا حفاظًا على البيانات. يلزم ترحيل مُراجع.', 'error');
+                            return;
+                        }
                         membersData = imported;
                         localStorage.setItem('nation_party_members', JSON.stringify(membersData));
                         renderMembersList();
