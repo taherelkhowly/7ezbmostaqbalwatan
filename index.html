@@ -36,43 +36,6 @@
 </head>
 
 <body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col md:flex-row">
-    <!-- Authentication gate: the application stays hidden until an active admin signs in -->
-    <div id="authGate" class="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-        <div class="text-center">
-          <div class="mx-auto mb-3 w-14 h-14 rounded-2xl bg-blue-950 text-yellow-400 flex items-center justify-center text-2xl"><i class="fa-solid fa-shield-halved"></i></div>
-          <h2 class="text-xl font-extrabold text-blue-950">تسجيل الدخول للنظام</h2>
-          <p class="text-sm text-slate-500 mt-1">أمانة مصر القديمة والمنيل</p>
-        </div>
-        <div id="setupNotice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 text-sm">
-          يلزم إعداد رابط مشروع Supabase والمفتاح العام من قسم الإعدادات قبل تسجيل الدخول.
-        </div>
-        <form id="loginForm" class="space-y-3">
-          <label class="block text-sm font-bold">البريد الإلكتروني
-            <input id="loginEmail" type="email" required autocomplete="username" class="mt-1 w-full border border-slate-300 rounded-xl p-3" placeholder="admin@example.com">
-          </label>
-          <label class="block text-sm font-bold">كلمة المرور
-            <input id="loginPassword" type="password" required autocomplete="current-password" class="mt-1 w-full border border-slate-300 rounded-xl p-3" placeholder="كلمة المرور">
-          </label>
-          <button id="loginButton" type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white rounded-xl p-3 font-bold">دخول آمن</button>
-        </form>
-        <details class="border-t pt-3">
-          <summary class="cursor-pointer text-sm font-bold text-slate-700">إعداد اتصال Supabase</summary>
-          <div class="space-y-3 mt-3">
-            <label class="block text-xs font-bold">Project URL
-              <input id="configProjectUrl" type="url" class="mt-1 w-full border rounded-lg p-2 font-mono" placeholder="https://PROJECT_REF.supabase.co">
-            </label>
-            <label class="block text-xs font-bold">Publishable key أو anon key
-              <input id="configAnonKey" type="password" class="mt-1 w-full border rounded-lg p-2 font-mono" placeholder="sb_publishable_... أو eyJ...">
-            </label>
-            <button type="button" onclick="saveSupabaseConfig()" class="w-full bg-emerald-700 text-white rounded-lg p-2 font-bold">حفظ إعداد الاتصال</button>
-            <p class="text-[11px] text-red-700">لا تستخدم service_role أو secret key في المتصفح.</p>
-          </div>
-        </details>
-        <p id="authMessage" role="status" class="text-sm text-center text-red-700"></p>
-      </div>
-    </div>
-
 
     <!-- SIDEBAR NAVIGATION -->
     <aside class="w-full md:w-64 bg-slate-900 text-white flex flex-col shadow-xl z-30 shrink-0">
@@ -133,10 +96,9 @@
                 <p class="text-[11px] text-amber-700 mt-1">تنبيه: البيانات محفوظة محليًا في هذا المتصفح فقط؛ ليست قاعدة بيانات مشتركة أو نسخة احتياطية تلقائية.</p>
             </div>
             <div class="flex items-center gap-3">
-                <span class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200">
-                    <i class="fa-solid fa-shield-halved text-yellow-600 ml-1.5"></i> <span id="sessionBadge">يتطلب تسجيل الدخول</span>
+                <span class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-200">
+                    <i class="fa-solid fa-unlock text-emerald-600 ml-1.5"></i> <span id="sessionBadge">يعمل بدون تسجيل دخول</span>
                 </span>
-                <button onclick="logoutFromSystem()" class="bg-red-700 hover:bg-red-800 text-white px-3 py-2 rounded-lg text-xs font-bold"><i class="fa-solid fa-right-from-bracket ml-1"></i> خروج</button>
             </div>
         </header>
 
@@ -510,24 +472,12 @@
         let geminiApiKey = '';
 
         window.onload = async function() {
-            const cfg = JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || 'null');
-            if (cfg) {
-                document.getElementById('configProjectUrl').value = cfg.url || '';
-                document.getElementById('configAnonKey').value = cfg.key || '';
-            }
+            // وضع مؤقت بدون تسجيل دخول: تشغيل النظام محليًا مباشرة.
+            dataMode = 'local';
+            document.getElementById('sessionBadge').textContent = 'يعمل بدون تسجيل دخول';
             renderMembersList();
             renderShayakhatCards();
-            if (!supabaseClient) {
-                document.getElementById('setupNotice').classList.remove('hidden');
-                return;
-            }
-            try {
-                const { data: { session }, error } = await supabaseClient.auth.getSession();
-                if (error) throw error;
-                if (session?.user) await establishAuthenticatedSession(session.user);
-            } catch (err) {
-                showAuthMessage('تعذر استعادة جلسة الدخول: ' + safeError(err));
-            }
+            if (typeof renderEventMembers === 'function') renderEventMembers();
         };
 
         function safeError(err) {
@@ -576,7 +526,6 @@
                 button.textContent = 'دخول آمن';
             }
         }
-        document.getElementById('loginForm').addEventListener('submit', loginToSystem);
 
         async function establishAuthenticatedSession(user) {
             if (!supabaseClient || !user) return;
