@@ -93,6 +93,9 @@
             <button onclick="switchTab('membersList')" id="menu-membersList" class="sidebar-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-right text-slate-300">
                 <i class="fa-solid fa-users text-base"></i> كشف الأعضاء (<span id="memberCountBadge">0</span>)
             </button>
+            <button onclick="switchTab('eventSheets')" id="menu-eventSheets" class="sidebar-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-right text-slate-300">
+                <i class="fa-solid fa-file-excel text-base text-emerald-400"></i> كشوف الفعاليات والتصدير
+            </button>
             <button onclick="switchTab('elections')" id="menu-elections" class="sidebar-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-right text-slate-300">
                 <i class="fa-solid fa-check-to-slot text-base"></i> الشياخات الـ 8 المعتمدة
             </button>
@@ -306,6 +309,67 @@
             </div>
         </section>
 
+        <!-- TAB: EVENT ATTENDANCE SHEETS -->
+        <section id="sec-eventSheets" class="hidden space-y-6">
+            <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+                <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-5">
+                    <div>
+                        <h3 class="text-lg font-extrabold text-blue-950"><i class="fa-solid fa-file-excel text-emerald-600 ml-2"></i>إعداد كشف أعضاء الفعالية</h3>
+                        <p class="text-sm text-slate-500 mt-1">اختَر الفئة التنظيمية أو الشياخة، وسيُدرج النظام الأعضاء المسجلين المطابقين تلقائيًا في كشف قابل للتصدير إلى Excel.</p>
+                    </div>
+                    <span class="rounded-xl bg-blue-50 text-blue-900 border border-blue-100 px-4 py-2 text-sm font-bold">عدد المطابقين: <b id="eventMemberCount">0</b></span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <label class="text-xs font-bold text-slate-700">اسم الفعالية
+                        <input id="eventName" type="text" class="mt-1 w-full border border-slate-300 rounded-xl p-3 text-sm" placeholder="مثال: اختيار هيئة مكتب القسم">
+                    </label>
+                    <label class="text-xs font-bold text-slate-700">الفئة / الموقع التنظيمي
+                        <select id="eventCategory" onchange="renderEventMembers()" class="mt-1 w-full border border-slate-300 rounded-xl p-3 text-sm">
+                            <option value="">كل المواقع التنظيمية</option>
+                            <option value="هيئة مكتب القسم">هيئة مكتب القسم</option>
+                            <option value="أمانة التنظيم">أمانة التنظيم</option>
+                            <option value="لجنة العضوية">لجنة العضوية</option>
+                            <option value="لجنة الشباب">لجنة الشباب</option>
+                            <option value="لجنة العمل الجماهيري">لجنة العمل الجماهيري</option>
+                            <option value="لجنة الاتصال السياسي">لجنة الاتصال السياسي</option>
+                            <option value="__custom">بحث في بيانات الموقع التنظيمي</option>
+                        </select>
+                    </label>
+                    <label class="text-xs font-bold text-slate-700">الشياخة / الوحدة
+                        <select id="eventShayakha" onchange="renderEventMembers()" class="mt-1 w-full border border-slate-300 rounded-xl p-3 text-sm">
+                            <option value="">كل الشياخات</option>
+                            <option value="أثر النبي">أثر النبي</option><option value="المنيل">المنيل</option>
+                            <option value="الروضة">الروضة</option><option value="كوم غراب">كوم غراب</option>
+                            <option value="عين الصيرة">عين الصيرة</option><option value="أبو السعود">أبو السعود</option>
+                            <option value="الكفور">الكفور</option><option value="الخوخة">الخوخة</option>
+                        </select>
+                    </label>
+                    <label class="text-xs font-bold text-slate-700">كلمة إضافية للبحث (اختياري)
+                        <input id="eventKeyword" oninput="renderEventMembers()" type="text" class="mt-1 w-full border border-slate-300 rounded-xl p-3 text-sm" placeholder="مثال: قسم مصر القديمة">
+                    </label>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <button onclick="renderEventMembers()" class="bg-blue-900 hover:bg-blue-800 text-white rounded-xl px-5 py-3 text-sm font-bold"><i class="fa-solid fa-filter ml-1"></i> عرض الأعضاء المطابقين</button>
+                    <button onclick="exportEventExcel()" class="bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl px-5 py-3 text-sm font-bold"><i class="fa-solid fa-file-excel ml-1"></i> تصدير كشف Excel</button>
+                    <button onclick="clearEventFilters()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl px-5 py-3 text-sm font-bold">مسح الاختيارات</button>
+                </div>
+                <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 leading-6">
+                    <b>مهم:</b> يعتمد الاختيار على البيانات المسجلة فعلًا في النظام. عند اختيار «هيئة مكتب القسم» يبحث النظام في حقول الموقع/المنصب التنظيمي والبيانات الأصلية القادمة من قاعدة البيانات؛ راجع المعاينة قبل التصدير. الحقول غير الموجودة في سجل العضو ستظل فارغة في ملف Excel.
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+                <h4 class="font-bold text-blue-950 mb-3">معاينة كشف الحضور</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-right border-collapse min-w-[900px]">
+                        <thead><tr class="bg-slate-50 border-b text-xs text-slate-600">
+                            <th class="p-3">م</th><th class="p-3">الاسم</th><th class="p-3">الموقع التنظيمي</th><th class="p-3">رقم العضوية</th><th class="p-3">المؤهل</th><th class="p-3">الوظيفة</th><th class="p-3">العنوان</th><th class="p-3">رقم القومي</th><th class="p-3">الهاتف</th>
+                        </tr></thead>
+                        <tbody id="eventMembersTableBody" class="text-xs"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
         <!-- TAB 3: SHAYAKHAT 8 -->
         <section id="sec-elections" class="hidden space-y-6">
             <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
@@ -420,6 +484,7 @@
 
     <!-- Supabase client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- JAVASCRIPT LOGIC -->
     <script>
         let membersData = JSON.parse(localStorage.getItem('nation_party_members')) || [];
@@ -631,7 +696,7 @@
         }
 
         function switchTab(tabId) {
-            ['addMember', 'membersList', 'elections', 'initiatives', 'certificates', 'settings'].forEach(id => {
+            ['addMember', 'membersList', 'eventSheets', 'elections', 'initiatives', 'certificates', 'settings'].forEach(id => {
                 document.getElementById(`sec-${id}`).classList.add('hidden');
                 document.getElementById(`menu-${id}`).classList.remove('active', 'bg-blue-900', 'text-white');
                 document.getElementById(`menu-${id}`).classList.add('text-slate-300');
@@ -645,6 +710,7 @@
             const titles = {
                 'addMember': 'تسجيل عضو جديد مع قراءة البطاقة',
                 'membersList': 'كشف أعضاء أمانة مصر القديمة والمنيل',
+                'eventSheets': 'كشوف الفعاليات والتصدير إلى Excel',
                 'elections': 'الوحدات الحزبية والشياخات الـ 8 المعتمدة',
                 'initiatives': 'المبادرات الخدمية والمجتمعية ("كلنا واحد")',
                 'certificates': 'طباعة الكارنيهات والشهادات الرسمية',
@@ -826,6 +892,7 @@
                     localStorage.setItem('nation_party_members', JSON.stringify(membersData));
                     renderMembersList();
                     renderShayakhatCards();
+                    renderEventMembers();
                 }
                 showToast(editingId ? 'تم تحديث بيانات العضو' : 'تم حفظ بيانات العضو', 'success');
                 resetForm();
@@ -933,6 +1000,114 @@
             } catch (err) {
                 showToast('لم يتم الحذف: ' + safeError(err), 'error');
             }
+        }
+
+        function rawMemberValue(member, candidates, fallback='') {
+            const direct = valueByCandidates(member || {}, candidates, '');
+            if (direct !== '' && direct != null) return String(direct);
+            const raw = member?._raw || {};
+            const rawKey = Object.keys(raw).find(k => candidates.some(c => c.toLowerCase() === k.toLowerCase()));
+            if (rawKey && raw[rawKey] != null) return String(raw[rawKey]);
+            // Fallback for schemas with Arabic or differently named columns.
+            const hints = candidates.join(' ').toLowerCase();
+            const key = Object.keys(raw).find(k => {
+                const lk = k.toLowerCase();
+                return (hints.includes('education') && /مؤهل|تعليم|education|qualification/.test(lk)) ||
+                       (hints.includes('job') && /وظيفة|مهنة|job|occupation/.test(lk)) ||
+                       (hints.includes('address') && /عنوان|address/.test(lk)) ||
+                       (hints.includes('position') && /موقع|منصب|تنظيم|position|org_unit/.test(lk));
+            });
+            return key && raw[key] != null ? String(raw[key]) : fallback;
+        }
+
+        function memberSearchBlob(member) {
+            const values = [member.fullname, member.nationalId, member.memberCode, member.phone,
+                member.shayakha, member.committee, member.addressDetails, member.dob, member.gov, member.gender];
+            if (member._raw) values.push(...Object.values(member._raw));
+            return values.filter(v => v != null).join(' ').toLocaleLowerCase('ar');
+        }
+
+        function getEventMembers() {
+            const category = document.getElementById('eventCategory')?.value || '';
+            const shayakha = document.getElementById('eventShayakha')?.value || '';
+            const keyword = (document.getElementById('eventKeyword')?.value || '').trim().toLocaleLowerCase('ar');
+            return membersData.filter(m => {
+                const blob = memberSearchBlob(m);
+                const position = String(m.committee || rawMemberValue(m, ['position_name','position','job_title','organizational_position','org_position','الموقع التنظيمي'], '')).toLocaleLowerCase('ar');
+                const categoryMatch = !category || category === '__custom' ||
+                    position.includes(category.toLocaleLowerCase('ar')) ||
+                    String(m.committee || '').toLocaleLowerCase('ar').includes(category.toLocaleLowerCase('ar')) ||
+                    blob.includes(category.toLocaleLowerCase('ar'));
+                const unitMatch = !shayakha || String(m.shayakha || '').toLocaleLowerCase('ar').includes(shayakha.toLocaleLowerCase('ar')) || blob.includes(shayakha.toLocaleLowerCase('ar'));
+                const keywordMatch = !keyword || blob.includes(keyword);
+                return categoryMatch && unitMatch && keywordMatch;
+            });
+        }
+
+        function renderEventMembers() {
+            const tbody = document.getElementById('eventMembersTableBody');
+            if (!tbody) return;
+            const list = getEventMembers();
+            document.getElementById('eventMemberCount').textContent = list.length;
+            if (!list.length) {
+                tbody.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-slate-400">لا توجد أسماء مطابقة للاختيارات الحالية. جرّب تغيير الفئة أو كلمة البحث.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = list.map((m, i) => {
+                const position = m.committee || rawMemberValue(m, ['position_name','position','job_title','organizational_position','org_position','الموقع التنظيمي'], '');
+                const qualification = rawMemberValue(m, ['qualification','education','educational_qualification','degree','المؤهل'], '');
+                const job = rawMemberValue(m, ['job','occupation','work','job_title','الوظيفة','المهنة'], '');
+                return `<tr class="border-b border-slate-100 hover:bg-slate-50">
+                    <td class="p-3">${i+1}</td><td class="p-3 font-bold">${escapeHTML(m.fullname)}</td>
+                    <td class="p-3">${escapeHTML(position)}</td><td class="p-3">${escapeHTML(m.memberCode || '')}</td>
+                    <td class="p-3">${escapeHTML(qualification)}</td><td class="p-3">${escapeHTML(job)}</td>
+                    <td class="p-3">${escapeHTML(m.addressDetails || rawMemberValue(m,['address','full_address','address_details','العنوان'],'') )}</td>
+                    <td class="p-3 font-mono">${escapeHTML(m.nationalId || '')}</td><td class="p-3">${escapeHTML(m.phone || '')}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function exportEventExcel() {
+            const list = getEventMembers();
+            if (!list.length) {
+                showToast('لا توجد أسماء لتصديرها. غيّر الفلاتر أولًا.', 'error');
+                return;
+            }
+            if (!window.XLSX) {
+                showToast('مكتبة Excel لم تُحمّل. تحقق من الاتصال بالإنترنت ثم أعد المحاولة.', 'error');
+                return;
+            }
+            const eventName = document.getElementById('eventName').value.trim() || 'كشف حضور فعالية';
+            const rows = [
+                [`كشف حضور: ${eventName}`],
+                ['م','الاسم','الموقع التنظيمي','رقم العضوية','المؤهل','الوظيفة','العنوان','رقم القومي','الهاتف'],
+                ...list.map((m,i) => [
+                    i+1, m.fullname || '',
+                    m.committee || rawMemberValue(m,['position_name','position','job_title','organizational_position','org_position','الموقع التنظيمي'],''),
+                    m.memberCode || '',
+                    rawMemberValue(m,['qualification','education','educational_qualification','degree','المؤهل'],''),
+                    rawMemberValue(m,['job','occupation','work','job_title','الوظيفة','المهنة'],''),
+                    m.addressDetails || rawMemberValue(m,['address','full_address','address_details','العنوان'],''),
+                    m.nationalId || '', m.phone || ''
+                ])
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [{wch:6},{wch:30},{wch:28},{wch:16},{wch:22},{wch:22},{wch:38},{wch:18},{wch:18}];
+            ws['!views'] = [{rightToLeft:true}];
+            ws['!autofilter'] = {ref:`A2:I${list.length+2}`};
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'كشف الحضور');
+            const safeName = eventName.replace(/[\\/:*?"<>|]/g,'_').slice(0,60);
+            XLSX.writeFile(wb, `${safeName}_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast(`تم تجهيز كشف Excel بعدد ${list.length} عضو`, 'success');
+        }
+
+        function clearEventFilters() {
+            document.getElementById('eventName').value = '';
+            document.getElementById('eventCategory').value = '';
+            document.getElementById('eventShayakha').value = '';
+            document.getElementById('eventKeyword').value = '';
+            renderEventMembers();
         }
 
         function exportDataJSON() {
